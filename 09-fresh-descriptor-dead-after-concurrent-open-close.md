@@ -43,7 +43,7 @@ Two threads calling `open()` at the same time can both be handed the same lowest
 
 ## C reproducer attempts
 - `src/open_slot_race.c` (**reproduces the failure**, see below): recreates vet's conditions: a pipe on descriptors 1 and 2, `close(1)`, several threads in an `open`, `read`, `close` loop so that most opens land on slot 1. Build `gcc-12 -maix64 -pthread -O1`. Options: `-t` threads, `-n` iterations, `-m` mode (0 no lock, 1 mutex around `open`, 2 around `close`, 3 around both, 4 around the whole sequence), `-p 0|1` pipe on 1 and 2, `-c 0|1` close descriptor 1, `-h N` held descriptors. Runs to try, interleaved: `-m 0` (expect failures if it reproduces), `-m 1` (expect clean if `open` against `open` is the race), `-m 2` (expect still failing), `-m 0 -p 0 -c 0` and `-m 0 -c 0` (which of vet's conditions are needed), `-m 0 -t 1` (no concurrency). Prints how many opens returned fd 1 and how many reads failed.
-- `src/open_close_race.c`: threads that open a file, read a few bytes, and close; reports every failing `read`. Modes: 0 no lock, 1 lock around every `open` and every `close`, 2 lock around the whole sequence. Build `gcc-12 -maix64 -pthread -O1`, run `./open_close_race [threads=8 [iterations=200000 [mode=0 [file]]]]`. **Its result is not recorded in the notes; run it first.** It has no descriptor-1 reuse: all threads keep their descriptors above 2, so it may not reproduce this. A faithful version has to free descriptor 1 first (`close(1)`) and then run the open, read, close loops from several threads, so that most opens land on slot 1.
+- `src/open_close_race.c`: threads that open a file, read a few bytes, and close; reports every failing `read`. Modes: 0 no lock, 1 lock around every `open` and every `close`, 2 lock around the whole sequence. Build `gcc-12 -maix64 -pthread -O1`, run `./open_close_race [threads=8 [iterations=200000 [mode=0 [file]]]]`. It has no descriptor-1 reuse (all threads keep their descriptors above 2); its result is not recorded, and `open_slot_race.c` replaces it.
 - Go programs that did not reproduce it (all 0 failures): concurrent open and read of the same files (one million reads), the same with a signal storm, closing the write end of a pipe while other threads open files (31,450 opens landed on fd 1), spawning children with a shared pipe.
 
 ## C reproducer result (open_slot_race, 4 threads, 200,000 opens each, pipe on 1 and 2, close(1), 4 held descriptors; 3 rounds each)
@@ -53,7 +53,7 @@ Two threads calling `open()` at the same time can both be handed the same lowest
 | `-m 1` mutex around `open` only | **0, 0, 0** (about half of the opens returned fd 1) | 0 |
 | `-m 2` mutex around `close` only | 17,591 / 18,065 / 16,667 | about 1,250 |
 
-A failed read gives EBADF; `fcntl(F_GETFL)` on that descriptor returns -1 (a few times 0). The bad descriptors are mostly 1 but also 8, 9 and 10, so slot 1 is not special. This is a plain-C reproducer with no Go in it: concurrent `open()` calls in one process hand out unusable descriptors, and some fail outright. The earlier Go and C probes that did concurrent opens without a pipe on 1 and 2 and without a freed slot 1 saw no failures; which of those two conditions matters is still to be measured (`-p 0 -c 0`, `-c 0`, `-t 1`).
+A failed read gives EBADF; `fcntl(F_GETFL)` on that descriptor returns -1 (a few times 0). The bad descriptors are mostly 1 but also 8, 9 and 10, so slot 1 is not special. This is a plain-C reproducer with no Go in it: concurrent `open()` calls in one process hand out unusable descriptors, and some fail outright. The earlier Go and C probes that did concurrent opens without a pipe on 1 and 2 and without a freed slot 1 saw no failures; the next table shows which of those two conditions matter.
 
 **Which conditions are needed** (one round each, 4 threads unless noted):
 
@@ -69,7 +69,7 @@ So it needs both a free low slot and several threads. With no free slot below th
 ## Effect and workaround
 `go vet` (run by `go test` and `all.bash`) reported a spurious `[build failed]` in about 1% of packages.
 
-Workaround in the Go port (`syscall/open_aix.go`, commit dbd1f69b67): `Open` takes a mutex around the `open()` call. A blocking `open` of a FIFO must not hold the mutex, since the other end may be opened by another goroutine of the same process, so the open under the mutex always carries `O_NONBLOCK`, which is cleared again afterwards; a FIFO opened for reading is closed and opened again outside the mutex, and so is a failure with `ENXIO` or `EAGAIN`. FIFO opens are therefore not serialized against other opens. `GOIBMI_OPENLOCK=0` turns it off.
+Workaround in the Go port (`syscall/open_aix.go`, commit 3ea9baf749 on the `iseries-1.26.9` branch): `Open` takes a mutex around the `open()` call. A blocking `open` of a FIFO must not hold the mutex, since the other end may be opened by another goroutine of the same process, so the open under the mutex always carries `O_NONBLOCK`, which is cleared again afterwards; a FIFO opened for reading is closed and opened again outside the mutex, and so is a failure with `ENXIO` or `EAGAIN`. FIFO opens are therefore not serialized against other opens. `GOIBMI_OPENLOCK=0` turns it off.
 
 Measured on the IBM i:
 

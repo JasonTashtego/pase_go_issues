@@ -25,12 +25,12 @@ Note: each group appears twice with two levels; the higher one is taken as the c
 
 | # | Issue | Strength | Reproducers (`src/`) |
 |---|---|---|---|
-| 1 | A signal interrupting `close()` of a pipe write end leaves a phantom writer; the reader never sees EOF | reproduced, single-threaded C | `pipe_signal_single.c`, `pipe_signal_repro.c`, `pipe_signal_mask.c`, `pipe_signal_repro_mask.c`, `sigpipe.c` |
-| 2 | Child fails to load (`-1 9`, EBADF) when another thread changes the descriptor table during fork+exec / posix_spawn | reproduced, needs a large executable as the child | `sigpipe.c` |
-| 3 | Every `*at` call fails with EINVAL for a real directory descriptor | reproduced, deterministic | `at_probe.c` |
-| 4 | `execve` fails with EPERM in a multi-threaded process | reproduced, deterministic | `exec_threads.c` |
-| 5 | Users and groups: no passwd/group files, `getgrset` returns a static buffer | observed | `getgrset_probe.c`, `group_probe.c` |
-| 6 | `getaddrinfo(NULL, "☺")` succeeds with port 0 | reproduced, deterministic | `getserv_probe.c`, `getaddr_probe.c` |
-| 7 | No `getifaddrs`; interface ioctls need the IP address text as the name | reproduced | `if_probe.c`, `if_probe2.c` |
-| 8 | `malloc`/`free` with concurrent `posix_spawn` deadlocks | seen once, not minimal | `sem_fork_probe.c` |
-| 9 | A descriptor returned by `open()` is unusable (`read` EBADF) when other threads open and close at the same time | reproduced in C (about 2% of opens with 4 threads; 0 with a mutex around `open`, no change with one around `close`) and in Go | `open_slot_race.c` |
+| [1](01-pipe-eof-lost-after-signal-in-close.md) | A signal interrupting `close()` of a pipe write end leaves a phantom writer; the reader never sees EOF | reproduced, single-threaded C | `pipe_signal_single.c`, `pipe_signal_repro.c`, `pipe_signal_mask.c`, `pipe_signal_repro_mask.c`, `sigpipe.c` |
+| [2](02-loader-failure-concurrent-fd-changes.md) | Child fails to load (`-1 9`, EBADF) when another thread changes the descriptor table during fork+exec / posix_spawn | reproduced, needs a large executable as the child | `sigpipe.c` |
+| [3](03-at-calls-einval.md) | Every `*at` call fails with EINVAL for a real directory descriptor | reproduced, deterministic | `at_probe.c` |
+| [4](04-execve-fails-in-multithreaded-process.md) | `execve` fails with EPERM in a multi-threaded process | reproduced, deterministic | `exec_threads.c` |
+| [5](05-users-and-groups.md) | Users and groups: no passwd/group files, `getgrset` returns a static buffer | observed | `getgrset_probe.c`, `group_probe.c` |
+| [6](06-getaddrinfo-accepts-invalid-service.md) | `getaddrinfo(NULL, "☺")` succeeds with port 0 | reproduced, deterministic | `getserv_probe.c`, `getaddr_probe.c` |
+| [7](07-network-interfaces.md) | No `getifaddrs`; interface ioctls need the IP address text as the name | reproduced | `if_probe.c`, `if_probe2.c` |
+| [8](08-malloc-posix_spawn-deadlock.md) | `malloc`/`free` with concurrent `posix_spawn` deadlocks | seen in 3 of 3 runs of a probe; no minimal reproducer | `sem_fork_probe.c` |
+| [9](09-fresh-descriptor-dead-after-concurrent-open-close.md) | A descriptor returned by `open()` is unusable (`read` EBADF) when other threads open and close at the same time | reproduced in C (about 2% of opens with 4 threads; 0 with a mutex around `open`, no change with one around `close`) and in Go | `open_slot_race.c` |
