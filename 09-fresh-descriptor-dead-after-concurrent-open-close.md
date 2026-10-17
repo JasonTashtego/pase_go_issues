@@ -69,7 +69,7 @@ So it needs both a free low slot and several threads. With no free slot below th
 ## Effect and workaround
 `go vet` (run by `go test` and `all.bash`) reported a spurious `[build failed]` in about 1% of packages.
 
-Workaround in the Go port (`syscall/open_aix.go`, commit 3ea9baf749 on the `iseries-1.26.9` branch): `Open` takes a mutex around the `open()` call. A blocking `open` of a FIFO must not hold the mutex, since the other end may be opened by another goroutine of the same process, so the open under the mutex always carries `O_NONBLOCK`, which is cleared again afterwards; a FIFO opened for reading is closed and opened again outside the mutex, and so is a failure with `ENXIO` or `EAGAIN`. FIFO opens are therefore not serialized against other opens. `GOIBMI_OPENLOCK=0` turns it off.
+Workaround in the Go port (`syscall/open_aix.go`, commit 8596c01e43 on the `iseries-1.26.9` branch): `Open` takes a mutex around the `open()` call. A blocking `open` of a FIFO must not hold the mutex, since the other end may be opened by another goroutine of the same process, so the open under the mutex always carries `O_NONBLOCK`, which is cleared again afterwards; a FIFO opened for reading is closed and opened again outside the mutex, and so is a failure with `ENXIO` or `EAGAIN`. FIFO opens are therefore not serialized against other opens. `GOIBMI_OPENLOCK=0` turns it off.
 
 Measured on the IBM i:
 
